@@ -31,6 +31,7 @@ try:
     from urllib.parse import urlsplit, parse_qs, urlunsplit
 except ImportError:
     from urlparse import urlsplit, parse_qs, urlunsplit
+import ssl
 
 __all__ = [
     'BasicAuthenticator',
@@ -44,14 +45,20 @@ if os.environ.get('__GEN_DOCS__', None):
 
 class AbstractAuthenticator(object):
     """Abstract Base Authenticator"""
-    def __init__(self, username, password, url, *handlers):
+    def __init__(self, username, password, url, verify, *handlers):
         """
         :param username: The RT Login
         :param password: Plain Text Password
         :param url: the url ?
         :param *handlers: todo
         """
-        self.opener = urllib2.build_opener(*handlers)
+        if verify:
+            self.opener = urllib2.build_opener(*handlers)
+        else:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            self.opener = urllib2.build_opener(urllib2.HTTPSHandler(context=ctx), *handlers)
         self.username = username
         self.password = password
         self.url = url
@@ -89,11 +96,11 @@ class BasicAuthenticator(AbstractAuthenticator):
 
         resource = RTResource('http://<HOST>/REST/1.0/', '<USER>', '<PWD>', BasicAuthenticator)
     """
-    def __init__(self, username, password, url):
+    def __init__(self, username, password, url, verify=True):
         passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
         passman.add_password(None, url, username, password)
         super(BasicAuthenticator, self).__init__(
-            username, password, url,
+            username, password, url, verify,
             urllib2.HTTPBasicAuthHandler(passman)
         )
 
@@ -114,9 +121,9 @@ class CookieAuthenticator(AbstractAuthenticator):
 
         resource = RTResource('http://<HOST>/REST/1.0/', '<USER>', '<PWD>', CookieAuthenticator)
     """
-    def __init__(self, username, password, url):
+    def __init__(self, username, password, url, verify=True):
         super(CookieAuthenticator, self).__init__(
-            username, password, url,
+            username, password, url, verify,
             urllib2.HTTPCookieProcessor(cookielib.LWPCookieJar())
         )
         self._logged = False
@@ -145,8 +152,11 @@ class QueryStringAuthenticator(AbstractAuthenticator):
         resource = RTResource('http://<HOST>/REST/1.0/', '<USER>', '<PWD>', QueryStringAuthenticator)
     """
 
-    def __init__(self, username, password, url):
-        super(QueryStringAuthenticator, self).__init__(username, password, url, QueryStringAuthHandler(username, password))
+    def __init__(self, username, password, url, verify=True):
+        super(QueryStringAuthenticator, self).__init__(
+            username, password, url, verify,
+            QueryStringAuthHandler(username, password)
+        )
 
 
 class QueryStringAuthHandler(urllib2.BaseHandler):
@@ -191,13 +201,13 @@ class KerberosAuthenticator(AbstractAuthenticator):
 
         resource = RTResource(url, None, None, KerberosAuthenticator)
     """
-    def __init__(self, username, password, url):
+    def __init__(self, username, password, url, verify=True):
         try:
             from urllib2_kerberos import HTTPKerberosAuthHandler
         except ImportError:
             raise ImportError('You need urllib2_kerberos, try: pip install urllib2_kerberos')
 
         super(KerberosAuthenticator, self).__init__(
-            username, password, url,
+            username, password, url, verify,
             HTTPKerberosAuthHandler()
         )
